@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# MariaBD/MySQL remote
+#
+# The Information what MySQL/MariaDB - databases should be backuped are defined in ~/.my.cnf
+
+function run_mysql_backups {
+	debug "Dump remote database $MYSQLDB from $MYSQLDBHOST"
+	/usr/bin/mysqldump --skip-dump-date -h "$MYSQLDBHOST" -u "$MYSQLDBUSER" -p"$MYSQLPASSWD" "$MYSQLDB" > "$TMP_DIR"/"$MYSQLDBHOST"_"$MYSQLDB".mysql
+	debug "Diff MySQLDump $MYSQLDB"
+	diff "$TMP_DIR"/"$MYSQLDBHOST"_"$MYSQLDB".mysql "$BACKUP_DIR"/"$MYSQLDBHOST"_"$MYSQLDB".mysql > /dev/null 2>&1
+	if [ $? -ne 0 ]; then
+		debug "Differences found -> moving to BACKUP_DIR"
+	        mv "$TMP_DIR"/"$MYSQLDBHOST"_"$MYSQLDB".mysql "$BACKUP_DIR"/"$MYSQLDBHOST"_"$MYSQLDB".mysql
+	else
+	        debug "No differences found an Database $MYSQLDB"
+	fi
+	echo ""
+}

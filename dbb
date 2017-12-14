@@ -1,0 +1,234 @@
+#!/bin/bash
+
+################################################################################
+#                                                                              #
+# Author: Patrick Ditzel (patrick@central-computer.de)                         #
+# Lizenz:  GNU GENERAL PUBLIC LICENSE v3                                       #
+#                                                                              #
+################################################################################
+
+################################################################################
+# Set up the backupenvironment and "global" functions
+################################################################################
+
+INSTALLATION_PATH_PREFIX=/usr/local
+
+function set_config {
+	if [ -r /etc/dbb.cfg ]; then
+		# Check if configuration is found in /etc. If yes set configvar
+		BACKUPCFG=/etc/dbb.cfg
+	elif [ -r ~/.dbb.cfg ]; then
+		# If config is found in the backupuser home directory set it into the configvar
+		BACKUPCFG=~/.dbb.cfg
+	else
+		echo "No configuration file is found, please create one" | /usr/bin/logger -s -i -t databasebackup
+	fi
+}
+
+function load_dbmodul_dfg {
+	if [ -d $BACKUPCFG.d ]; then
+		if [ ! "$(ls -A $BACKUPCFG.d)" ]; then
+			echo "Configurationdirectory for modules exist but it is empty" | /usr/bin/logger -s -i -t databasebackup
+		else
+			for MODULCFG in $(ls $BACKUPCFG.d); do . $BACKUPCFG.d/MODULCFG; done
+		fi
+	else
+		echo "Configurationdirectory does nort exists, can't load any configurationfile" | /usr/bin/logger -s -i -t databasebackup
+	fi
+}
+
+function check_backup_env {
+	# Check if the configuration exists and is not empty
+	if [ -r $BACKUPCFG ] && [ -s $BACKUPCFG ]; then
+		# If true then read it
+		. $BACKUPCFG
+		load_dbmodul_dfg
+	else
+		# If not throw an errormessage
+		echo "The configfile does not exists or is empty" | /usr/bin/logger -s -i -t databasebackup
+		echo "Please create the $BACKUPCFG or write your settings into" | /usr/bin/logger -s -i -t databasebackup
+		exit 1
+	fi
+	if [ "$ENABLE_DEBUG" = "TRUE" ]; then
+		# If debugoutput is enabled show the configurationfile without comments
+		echo "################################################################################" | /usr/bin/logger -s -i -t databasebackup
+		while read -r configline; do
+			echo "$configline" | grep -v '^$' | grep -v '^#' | /usr/bin/logger -s -i -t databasebackup
+		done <<< "$(cat $BACKUPCFG)"
+		echo "################################################################################" | /usr/bin/logger -s -i -t databasebackup
+	fi
+	# Check if the target directory for the backupfiles exists
+	if [ ! -d "$BACKUP_DIR" ]; then
+		# If not create it
+		mkdir -p "$BACKUP_DIR"
+	fi
+	# Check if the directory for tempfiles exists
+	if [ ! -d "$TMP_DIR" ]; then
+		# If not create it
+		mkdir -p "$TMP_DIR"
+	fi
+	
+}
+
+function set_logger {
+	# Check if log to syslog is enabled
+	if [ "$ENABLE_SYSLOG" = "TRUE" ]; then
+		# If true then define the logger
+		LOGGER="/usr/bin/logger -s -i -t databasebackup"
+	else
+		# If not cat it out on stdout
+		LOGGER="/bin/cat"
+	fi
+}
+
+function debug {
+        DEBUGMSG=$1
+        if [ "$ENABLE_DEBUG" = "TRUE" ]; then
+                echo "$DEBUGMSG" | $LOGGER
+        fi
+}
+
+function load_dbmodules {
+	if [ -d $BACKUPCFG.d ] && [ -d $INSTALLATION_PATH_PREFIX/lib/dbb-modules ]; then
+		if [ ! "$(ls -A $BACKUPCFG.d)" ] && [ ! "$(ls -A $INSTALLATION_PATH_PREFIX/lib/dbb-modules)" ]; then
+			debug "Configurationdirectory or directory for modules exist but it is empty"
+		else
+			for MODUL in $(ls $BACKUPCFG.d | cut -d "." -f1); do 
+				. $INSTALLATION_PATH_PREFIX/lib/dbb-modules/$MODUL
+				debug "Load module: $INSTALLATION_PATH_PREFIX/lib/dbb-modules/$MODUL"
+				check_$MODUL_deps
+			done
+		fi
+	else
+		debug "Configurationdirectory does nort exists, can't load any configurationfile"
+	fi
+}
+
+function is_interactive {
+	SCRPT=$(basename "$0")
+	debug "$SCRPT"
+
+	if [ "$SCRPT" = "dbbi" ]; then
+		# If the script is called for interactive use we have to chenge the calls of the functions
+		# Setting the $LOGGER für interactive use to /bin/cat
+		LOGGER="/bin/cat"
+		# Here we set teh environment variable for interactive use
+		debug "dbbi (DataBase Interactive Backup) is called"
+		RADIOACTIVE=TRUE
+	elif [ "$SCRPT" = "dbb" ]; then
+		# Set the $LOGGER
+		LOGGER="/usr/bin/logger -s -i -t databasebackup"
+		# If the script is used noninteractive we have also to set the environmet variable with this information
+		debug "dbb (DataBase Backup) is called"
+		RADIOACTIVE=FALSE
+		# unset the $LOGGER because this will be set later within the informatione in the configfile
+		unset LOGGER
+	else
+		# If the switch between interactive and noninteractive does not work: tell it but before set the $LOGGER
+		LOGGER="/usr/bin/logger -s -i -t databasebackup"
+		debug "An error occured - don't know if to use interactive or noninteractive"
+		exit 1
+	fi
+}
+
+function backup_file_handler {
+	# translate the vars to make it more readable
+	BFH_TMP_DIR=$1
+	BFH_BACKUPDIR_DIR=$2
+	BFH_FILE=$3
+	# If enabled put out some debug infos
+	debug "BFH_TMP_DIR: $BFH_TMP_DIR"
+	debug "BFH_BACKUPDIR_DIR: $BFH_BACKUPDIR_DIR"
+	debug "FILE: $BFH_FILE"
+	# Check if the script should keep a filehistorie
+	if [ "$KEEP_BACKUP_FILES" = "TRUE" ]; then
+		debug "Keep history"
+		# Set some vars to manage the files
+		BACKUP_DAY=$(date +%x)
+		REMOVE_NUMBER=$(( $BACKUP_FILES_DAYS + 1 ))
+		BFH_FILE_PREFIX_NAME_TO_REMOVE=$(date -d "$REMOVE_NUMBER days ago" "+%x")
+		# ... and if it is turned on give some debig info
+		debug "BACKUP_DAY: $BACKUP_DAY"
+		debug "REMOVE_NUMBER: $REMOVE_NUMBER"
+		debug "FILE_PREFIX_NAME_TO_REMOVE: $BFH_FILE_PREFIX_NAME_TO_REMOVE-$BFH_FILE"
+		# Check if there is an backupfile from the current day
+		if [ -f "$BFH_BACKUPDIR_DIR"/"$BACKUP_DAY"-"$BFH_FILE" ]; then
+			# If yes append miniutes and seconds to the date-profix of the filename
+			debug "File $BFH_BACKUPDIR_DIR/$BACKUP_DAY-$BFH_FILE already exists. Rename the new one."
+			DATE_TIME_SUFFIX=$(date +%H%M%S)
+			# ... and move it into the targetdir
+			mv "$BFH_TMP_DIR"/"$BFH_FILE" "$BFH_BACKUPDIR_DIR"/"$BACKUP_DAY"-"$DATE_TIME_SUFFIX"-"$BFH_FILE"
+		else
+			# If there is no backupfile of the current day move it to the backupfolder
+			mv "$BFH_TMP_DIR"/"$BFH_FILE" "$BFH_BACKUPDIR_DIR"/"$BACKUP_DAY"-"$BFH_FILE"
+		fi
+		# Check if there are files older then the days to keep set in the config
+		if [ -f "$BFH_BACKUPDIR_DIR"/"$BFH_FILE_PREFIX_NAME_TO_REMOVE"-"$BFH_FILE" ]; then
+			# if yes remove it
+			rm "$BFH_BACKUPDIR_DIR"/"$BFH_FILE_PREFIX_NAME_TO_REMOVE"-"$BFH_FILE"
+			# Also remove the files with the extended prefix in the name
+			# If there is ab file with the extende prefix then there has to be a file with tne normal prefix
+			rm "$BFH_BACKUPDIR_DIR"/"$BFH_FILE_PREFIX_NAME_TO_REMOVE"?????-"$BFH_FILE"
+		else
+			# If no file exists do nothing but some debuginfo
+			debug "File $BFH_BACKUPDIR_DIR/$BFH_FILE_PREFIX_NAME_TO_REMOVE-$BFH_FILE does not exists, so can not remove it."
+		fi
+	else
+		# If we do not keep a filehistory do the following
+		# Check if the targefile exists
+		if [ -f "$BFH_BACKUPDIR_DIR"/"$BFH_FILE" ]; then
+			debug "$BFH_FILE exists ... make a diff"
+			# Check if there are differences betwenn last backup and the actual one
+			diff "$BFH_TMP_DIR"/"$BFH_FILE" "$BFH_BACKUPDIR_DIR"/"$BFH_FILE" > /dev/null 2>&1
+			if [ $? -ne 0 ]; then
+				# If yes then move it to the backupfolder
+				debug "Differences found between old and new $BFH_FILE -> moving to BACKUP_DIR"
+				mv "$BFH_TMP_DIR"/"$BFH_FILE" "$BFH_BACKUPDIR_DIR"/"$BFH_FILE"
+			else
+				# If not do nothing
+				debug "No differences found between old an new $BFH_FILE"
+			fi
+		else
+			# If there is a new databasedumpfile move it to the backupfolder
+			debug "New Backupfile $BFH_FILE -> moving to $BFH_BACKUPDIR_DIR"
+			mv "$BFH_TMP_DIR"/"$BFH_FILE" "$BFH_BACKUPDIR_DIR"/"$BFH_FILE"
+		fi
+	fi
+}
+
+function check_global_deps {
+	# Check the dependencys
+	if [ ! -e /usr/bin/sudo ]; then
+		echo "It seems that you dont have sudo installed. Please install sudo and restart" | /usr/bin/logger -s -i -t databasebackup
+		exit 1
+	fi
+}
+
+################################################################################
+
+# The mainfunktion
+function main {
+	check_global_deps
+	is_interactive
+	if [ "$RADIOACTIVE" = "TRUE" ]; then
+		debug "Unsing dbbi (dbb interactive = dbbi) is for future use"
+	fi
+	if [ "$RADIOACTIVE" = "FALSE" ]; then
+		debug "running noninteractive"
+		# Set up the configuration for the noninteractive mode
+		set_config
+		# Configure logging (from configurationfil)e
+		set_logger
+		# Check if the backupenvironment is setup properly
+		check_backup_env
+		# Run modul-main-functions
+		for MODULMAIN in $(ls $BACKUPCFG.d | cut -d "." -f1); do 
+			$MODULMAIN_main
+		done
+			# The final action: remove the dumps
+		rm -rf "$TMP_DIR"
+	fi
+
+}
+
+main

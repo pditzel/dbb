@@ -1,0 +1,5 @@
+#!/bin/bash
+
+function run_mongodb_backup {
+	echo ""
+}
