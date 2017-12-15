@@ -25,24 +25,21 @@ function set_config {
 	fi
 }
 
-function load_dbmodul_dfg {
-	if [ -d $BACKUPCFG.d ]; then
-		if [ ! "$(ls -A $BACKUPCFG.d)" ]; then
-			echo "Configurationdirectory for modules exist but it is empty" | /usr/bin/logger -s -i -t databasebackup
-		else
-			for MODULCFG in $(ls $BACKUPCFG.d); do . $BACKUPCFG.d/MODULCFG; done
-		fi
-	else
-		echo "Configurationdirectory does nort exists, can't load any configurationfile" | /usr/bin/logger -s -i -t databasebackup
-	fi
-}
-
 function check_backup_env {
 	# Check if the configuration exists and is not empty
 	if [ -r $BACKUPCFG ] && [ -s $BACKUPCFG ]; then
 		# If true then read it
 		. $BACKUPCFG
-		load_dbmodul_dfg
+		if [ -d $BACKUPCFG.d ]; then
+			if [ ! "$(ls -A $BACKUPCFG.d)" ]; then
+				echo "Configurationdirectory for modules exist but it is empty" | /usr/bin/logger -s -i -t databasebackup
+			else
+				echo "Read module configuration" | /usr/bin/logger -s -i -t databasebackup
+				for MODULECFG in $(ls $BACKUPCFG.d); do . $BACKUPCFG.d/$MODULECFG; done
+			fi
+		else
+			echo "Configurationdirectory does not exists, can't load any configurationfile" | /usr/bin/logger -s -i -t databasebackup
+		fi	
 	else
 		# If not throw an errormessage
 		echo "The configfile does not exists or is empty" | /usr/bin/logger -s -i -t databasebackup
@@ -51,10 +48,16 @@ function check_backup_env {
 	fi
 	if [ "$ENABLE_DEBUG" = "TRUE" ]; then
 		# If debugoutput is enabled show the configurationfile without comments
-		echo "################################################################################" | /usr/bin/logger -s -i -t databasebackup
+		echo "####dd############################################################################" | /usr/bin/logger -s -i -t databasebackup
 		while read -r configline; do
 			echo "$configline" | grep -v '^$' | grep -v '^#' | /usr/bin/logger -s -i -t databasebackup
 		done <<< "$(cat $BACKUPCFG)"
+		for MODCFGLINE in $(ls $BACKUPCFG.d); do
+			echo "Debuginfo for $MODCFGLINE" | /usr/bin/logger -s -i -t databasebackup
+			while read -r modconfigline; do
+				echo "$modconfigline" | grep -v '^$' | grep -v '^#' | /usr/bin/logger -s -i -t databasebackup
+			done <<< $(cat $BACKUPCFG.d/$MODCFGLINE)
+		done
 		echo "################################################################################" | /usr/bin/logger -s -i -t databasebackup
 	fi
 	# Check if the target directory for the backupfiles exists
@@ -84,19 +87,23 @@ function set_logger {
 function debug {
         DEBUGMSG=$1
         if [ "$ENABLE_DEBUG" = "TRUE" ]; then
-                echo "$DEBUGMSG" | $LOGGER
+                echo "<debuginformation>: $DEBUGMSG" | $LOGGER
         fi
 }
 
-function load_dbmodules {
+function load_dbbmodules {
+	# Function to load the dbb-module corresponding to the config-files found in the dbb.cfg.d-directory
+	debug "function: load_dbbmodules, VAR BACKUPCFG.d: $BACKUPCFG.d"
+	debug "function: load_dbbmodules, VAR INSTALLATION_PATH_PREFIX/lib/dbb-modules: $INSTALLATION_PATH_PREFIX/lib/modules"
 	if [ -d $BACKUPCFG.d ] && [ -d $INSTALLATION_PATH_PREFIX/lib/dbb-modules ]; then
 		if [ ! "$(ls -A $BACKUPCFG.d)" ] && [ ! "$(ls -A $INSTALLATION_PATH_PREFIX/lib/dbb-modules)" ]; then
 			debug "Configurationdirectory or directory for modules exist but it is empty"
 		else
-			for MODUL in $(ls $BACKUPCFG.d | cut -d "." -f1); do 
-				. $INSTALLATION_PATH_PREFIX/lib/dbb-modules/$MODUL
-				debug "Load module: $INSTALLATION_PATH_PREFIX/lib/dbb-modules/$MODUL"
-				check_$MODUL_deps
+			for MODULE in $(ls $BACKUPCFG.d | cut -d "." -f1); do 
+				. $INSTALLATION_PATH_PREFIX/lib/dbb-modules/$MODULE
+				debug "Load module: $INSTALLATION_PATH_PREFIX/lib/dbb-modules/$MODULE"
+				# Check the dependenncies defined in the modulefunction -> should be defined in configfiles
+				check-$MODULE-deps
 			done
 		fi
 	else
@@ -197,10 +204,12 @@ function backup_file_handler {
 }
 
 function check_global_deps {
-	# Check the dependencys
+	# Check the dependencies for the global part of dbb
 	if [ ! -e /usr/bin/sudo ]; then
-		echo "It seems that you dont have sudo installed. Please install sudo and restart" | /usr/bin/logger -s -i -t databasebackup
+		debug "It seems that you dont have sudo installed. Please install sudo and restart"
 		exit 1
+	else
+		debug "Global dependencies are OK."
 	fi
 }
 
@@ -208,22 +217,26 @@ function check_global_deps {
 
 # The mainfunktion
 function main {
-	check_global_deps
+	# Check if the script runs interactive or not
 	is_interactive
 	if [ "$RADIOACTIVE" = "TRUE" ]; then
 		debug "Unsing dbbi (dbb interactive = dbbi) is for future use"
 	fi
 	if [ "$RADIOACTIVE" = "FALSE" ]; then
-		debug "running noninteractive"
 		# Set up the configuration for the noninteractive mode
 		set_config
 		# Configure logging (from configurationfil)e
 		set_logger
 		# Check if the backupenvironment is setup properly
 		check_backup_env
+		debug "Check global dependencies"
+		check_global_deps
+		debug "Load dbb-modules"
+		load_dbbmodules
 		# Run modul-main-functions
-		for MODULMAIN in $(ls $BACKUPCFG.d | cut -d "." -f1); do 
-			$MODULMAIN_main
+		for MODULEMAIN in $(ls $BACKUPCFG.d | cut -d "." -f1); do 
+			debug "run $MODULEMAIN-main - function of module $MODULEMAIN"
+			$MODULEMAIN-main
 		done
 			# The final action: remove the dumps
 		rm -rf "$TMP_DIR"

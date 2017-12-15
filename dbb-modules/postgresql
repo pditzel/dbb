@@ -2,7 +2,7 @@
 
 # dependencies
 
-function check_postgresql_deps {
+function check-postgresql-deps {
 	if [ ! -e /usr/bin/psql ]; then
 		debug "It seems that you dont have psql installed. You may have problems to backup remote databases" 
 	fi
@@ -128,7 +128,7 @@ function run_remote_pg_backups {
 	echo ""
 }
 
-function postgres_main {
+function postgresql-main {
 	if [ "$POSTGRES_BACKUP_LOCAL" = "TRUE" ]; then
 		run_local_pg_backups
 	fi
@@ -136,3 +136,4 @@ function postgres_main {
 		run_remote_pg_backups
 	fi
 }
+
