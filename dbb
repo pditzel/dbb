@@ -29,17 +29,17 @@ function check_backup_env {
 	# Check if the configuration exists and is not empty
 	if [ -r $BACKUPCFG ] && [ -s $BACKUPCFG ]; then
 		# If true then read it
-		. $BACKUPCFG
+		source $BACKUPCFG
 		if [ -d $BACKUPCFG.d ]; then
-			if [ ! "$(ls -A $BACKUPCFG.d)" ]; then
+			if [ ! "$(find $BACKUPCFG.d/*.cfg | cut -d "." -f1)" ]; then
 				echo "Configurationdirectory for modules exist but it is empty" | /usr/bin/logger -s -i -t databasebackup
 			else
 				echo "Read module configuration" | /usr/bin/logger -s -i -t databasebackup
-				for MODULECFG in $(ls $BACKUPCFG.d); do . $BACKUPCFG.d/$MODULECFG; done
+				for MODULECFG in $(find $BACKUPCFG.d/*.cfg | cut -d "/" -f4 | cut -d "." -f1); do source $BACKUPCFG.d/$MODULECFG.cfg; done
 			fi
 		else
 			echo "Configurationdirectory does not exists, can't load any configurationfile" | /usr/bin/logger -s -i -t databasebackup
-		fi	
+		fi
 	else
 		# If not throw an errormessage
 		echo "The configfile does not exists or is empty" | /usr/bin/logger -s -i -t databasebackup
@@ -48,15 +48,15 @@ function check_backup_env {
 	fi
 	if [ "$ENABLE_DEBUG" = "TRUE" ]; then
 		# If debugoutput is enabled show the configurationfile without comments
-		echo "####dd############################################################################" | /usr/bin/logger -s -i -t databasebackup
+		echo "##################################################################################" | /usr/bin/logger -s -i -t databasebackup
 		while read -r configline; do
 			echo "$configline" | grep -v '^$' | grep -v '^#' | /usr/bin/logger -s -i -t databasebackup
 		done <<< "$(cat $BACKUPCFG)"
-		for MODCFGLINE in $(ls $BACKUPCFG.d); do
+		for MODCFGLINE in $(find $BACKUPCFG.d/*.cfg | cut -d "." -f1); do
 			echo "Debuginfo for $MODCFGLINE" | /usr/bin/logger -s -i -t databasebackup
 			while read -r modconfigline; do
 				echo "$modconfigline" | grep -v '^$' | grep -v '^#' | /usr/bin/logger -s -i -t databasebackup
-			done <<< $(cat $BACKUPCFG.d/$MODCFGLINE)
+			done <<< "$(cat $BACKUPCFG.d/$MODCFGLINE.cfg)"
 		done
 		echo "################################################################################" | /usr/bin/logger -s -i -t databasebackup
 	fi
@@ -70,7 +70,7 @@ function check_backup_env {
 		# If not create it
 		mkdir -p "$TMP_DIR"
 	fi
-	
+
 }
 
 function set_logger {
@@ -99,8 +99,8 @@ function load_dbbmodules {
 		if [ ! "$(ls -A $BACKUPCFG.d)" ] && [ ! "$(ls -A $INSTALLATION_PATH_PREFIX/lib/dbb-modules)" ]; then
 			debug "Configurationdirectory or directory for modules exist but it is empty"
 		else
-			for MODULE in $(ls $BACKUPCFG.d | cut -d "." -f1); do 
-				. $INSTALLATION_PATH_PREFIX/lib/dbb-modules/$MODULE
+			for MODULE in $(find $BACKUPCFG.d/*.cfg | cut -d "/" -f4 | cut -d "." -f1); do
+				source $INSTALLATION_PATH_PREFIX/lib/dbb-modules/$MODULE
 				debug "Load module: $INSTALLATION_PATH_PREFIX/lib/dbb-modules/$MODULE"
 				# Check the dependenncies defined in the modulefunction -> should be defined in configfiles
 				check-$MODULE-deps
@@ -234,7 +234,7 @@ function main {
 		debug "Load dbb-modules"
 		load_dbbmodules
 		# Run modul-main-functions
-		for MODULEMAIN in $(ls $BACKUPCFG.d | cut -d "." -f1); do 
+		for MODULEMAIN in $(find $BACKUPCFG.d/*.cfg | cut -d "/" -f4 | cut -d "." -f1); do
 			debug "run $MODULEMAIN-main - function of module $MODULEMAIN"
 			$MODULEMAIN-main
 		done

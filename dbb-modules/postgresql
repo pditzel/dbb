@@ -3,12 +3,18 @@
 # dependencies
 
 function check-postgresql-deps {
-	if [ ! -e /usr/bin/psql ]; then
-		debug "It seems that you dont have psql installed. You may have problems to backup remote databases" 
+	if [ ! -e /usr/bin/pg_dump ]; then
+		debug "It seems that you dont have psql installed. You may have problems to backup remote databases"
 	fi
 	numberRegex='^[0-9]+$'
 	if ! [[ $(id -u postgres 2>&1) =~ $numberRegex ]] ; then
-		debug "It seems that you dont have the user postgres on your computer. You may have problems to backup local postgres databases" 
+		debug "It seems that you dont have the user postgres on your computer. You may have problems to backup local postgres databases"
+	fi
+	if [ -r ~/.pgpass ]; then
+		debug "function check-postgresql-deps: ~/.pgpass exists, doing reomte backup."
+	else
+		# If the ~/.pgpass-file is missig, deactivate remote backup of postgresql.
+		POSTGRES_BACKUP_REMOTE=FLASE
 	fi
 }
 
@@ -19,7 +25,7 @@ function pg_local_all {
 	debug "Dump all from Postgres local"
 	# Dump all databases in one file as user postgres (Debian)
 	sudo -H -i -u postgres pg_dumpall > "$TMP_DIR"/local_dumpall.pgsql
-	debug "Diff alldumps from Postgres local" 
+	debug "Diff alldumps from Postgres local"
 	# Check if there are differences between the actual dump and the last dump
 	backup_file_handler "$TMP_DIR $BACKUP_DIR" local_dumpall.pgsql
 }
@@ -57,7 +63,7 @@ function run_local_pg_backups {
 		echo "" | $LOGGER
 		echo "The backupuser does not the permission to act as user postgres" | $LOGGER
 		echo "Please add the following line to your /etc/sudoers:" | $LOGGER
-		echo "backupuser ALL=(postgres) NOPASSWD: /usr/bin/psql,/usr/bin/pg_dump" | $LOGGER
+		echo "backupuser ALL=(postgres) NOPASSWD:/usr/bin/psql,/usr/bin/pg_dump,/usr/bin/pg_dumpall" | $LOGGER
 		echo "" | $LOGGER
 	fi
 }
@@ -108,11 +114,11 @@ function run_remote_pg_backups {
 		# If yes the check for the ~/.pgpass-file. Here are the remotedatabases specified
 		if [ -r ~/.pgpass ]; then
 			# parallelize the following
-			while read -r LINE; do 
+			while read -r LINE; do
 				# For each entry do the backup
 				debug "run dump with params $LINE"
 				# CAUTION: No doublequotes in the following line. The var $LINE has to be splittet!
-                                dump_remote_pgdb $LINE
+	        dump_remote_pgdb $LINE
 			# To get the params for the function the .pgpass-file is striped from the comments,
 			# the ":" are replaces against whitespaces and only the first four coloums are used
 			# so we give "host port database user" to the function
@@ -136,4 +142,3 @@ function postgresql-main {
 		run_remote_pg_backups
 	fi
 }
-

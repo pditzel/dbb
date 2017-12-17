@@ -3,17 +3,42 @@
 # MariaBD/MySQL remote
 #
 # The Information what MySQL/MariaDB - databases should be backuped are defined in ~/.my.cnf
+#
+# note:for MARIADB in $(ls .my.cnf-* | cut -d "-" -f2); do mysqldump --defaults-file="~/.my.cnf-$MARIADB" --skip-dump-date $MARIADB > $TMP_DIR/$(cat ~/.my.cnf-$DATABASE | grep host | cut -d "=" -f2); done
+# note: for each MySQL- or MariaDB-Database create a seperate configfile .my.cnf-dbname ind the ~ of the backupuser:
+# note: replase the suffixe -dbname with the name of the database. The seperating "-" can also be a ".".
+#	[mysqldump]
+# host=HOSTNAME
+# user=DBUSERNAME
+# password=PASSWORD
+# database=DATABASENAME
 
-function run_mysql_backups {
-	debug "Dump remote database $MYSQLDB from $MYSQLDBHOST"
-	/usr/bin/mysqldump --skip-dump-date -h "$MYSQLDBHOST" -u "$MYSQLDBUSER" -p"$MYSQLPASSWD" "$MYSQLDB" > "$TMP_DIR"/"$MYSQLDBHOST"_"$MYSQLDB".mysql
-	debug "Diff MySQLDump $MYSQLDB"
-	diff "$TMP_DIR"/"$MYSQLDBHOST"_"$MYSQLDB".mysql "$BACKUP_DIR"/"$MYSQLDBHOST"_"$MYSQLDB".mysql > /dev/null 2>&1
+function check-mariadb-deps {
+	if [ ! -e /usr/bin/mysqldump ]; then
+		debug "It seems that you dont have mysqldump installed. You may have problems to backup remote databases"
+	fi
+# TODO: Check for ~/.my.cnf-*
+}
+
+function mariadb_remote {
+	MARIADBHOSTNAME=$(cat ~/.my.cnf-$DATABASE | grep host | cut -d "=" -f2)
+	for MARIADB in $(ls .my.cnf-* | cut -d "-" -f2)
+		do
+		/usr/bin/mysqldump --defaults-file="~/.my.cnf-$MARIADB" --skip-dump-date $MARIADB > $TMP_DIR/$MARIADBHOSTNAME_$MARIADB.mysql
+		debug "Diff MySQLDump $MYSQLDB"
+		diff "$TMP_DIR"/"$MARIADBHOSTNAME"_"$MARIADB".mysql "$BACKUP_DIR"/"$MARIADBHOSTNAME"_"$MARIADB".mysql > /dev/null 2>&1
 	if [ $? -ne 0 ]; then
 		debug "Differences found -> moving to BACKUP_DIR"
-	        mv "$TMP_DIR"/"$MYSQLDBHOST"_"$MYSQLDB".mysql "$BACKUP_DIR"/"$MYSQLDBHOST"_"$MYSQLDB".mysql
+	        mv "$TMP_DIR"/"$MARIADBHOSTNAME"_"$MARIADB".mysql "$BACKUP_DIR"/"$MARIADBHOSTNAME"_"$MARIADB".mysql
 	else
-	        debug "No differences found an Database $MYSQLDB"
+	        debug "No differences found in Database $MARIADB"
 	fi
 	echo ""
+	done
+}
+
+function mariadb-main {
+	if [ "$MARIADB_BACKUP_REMOTE" = "TRUE" ]; then
+		mariadb_remote
+	fi
 }
