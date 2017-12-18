@@ -21,15 +21,15 @@ function check-mariadb-deps {
 }
 
 function mariadb_remote {
-	MARIADBHOSTNAME=$(cat ~/.my.cnf-$DATABASE | grep host | cut -d "=" -f2)
-	for MARIADB in $(ls .my.cnf-* | cut -d "-" -f2)
-		do
-		/usr/bin/mysqldump --defaults-file="~/.my.cnf-$MARIADB" --skip-dump-date $MARIADB > $TMP_DIR/$MARIADBHOSTNAME_$MARIADB.mysql
+	for MARIADB in $(ls ~/.my.cnf-* | cut -d "-" -f2); do
+		debug "Function mariadb_remote: Doing Database: $MARIADB"
+		MARIADBHOSTNAME=$(cat ~/.my.cnf-"$MARIADB" | grep host | cut -d "=" -f2)
+		/usr/bin/mysqldump --defaults-file=~/.my.cnf-"$MARIADB" --skip-dump-date "$MARIADB" > "$TMP_DIR"/"$MARIADBHOSTNAME"_"$MARIADB".mysql
 		debug "Diff MySQLDump $MYSQLDB"
 		diff "$TMP_DIR"/"$MARIADBHOSTNAME"_"$MARIADB".mysql "$BACKUP_DIR"/"$MARIADBHOSTNAME"_"$MARIADB".mysql > /dev/null 2>&1
 	if [ $? -ne 0 ]; then
 		debug "Differences found -> moving to BACKUP_DIR"
-	        mv "$TMP_DIR"/"$MARIADBHOSTNAME"_"$MARIADB".mysql "$BACKUP_DIR"/"$MARIADBHOSTNAME"_"$MARIADB".mysql
+		backup_file_handler "$TMP_DIR" "$BACKUP_DIR" "$MARIADBHOSTNAME"_"$MARIADB".mysql
 	else
 	        debug "No differences found in Database $MARIADB"
 	fi

@@ -31,11 +31,11 @@ function check_backup_env {
 		# If true then read it
 		source $BACKUPCFG
 		if [ -d $BACKUPCFG.d ]; then
-			if [ ! "$(find $BACKUPCFG.d/*.cfg | cut -d "." -f1)" ]; then
+			if [ ! "$(find $BACKUPCFG.d/*.cfg)" ]; then
 				echo "Configurationdirectory for modules exist but it is empty" | /usr/bin/logger -s -i -t databasebackup
 			else
 				echo "Read module configuration" | /usr/bin/logger -s -i -t databasebackup
-				for MODULECFG in $(find $BACKUPCFG.d/*.cfg | cut -d "/" -f4 | cut -d "." -f1); do source $BACKUPCFG.d/$MODULECFG.cfg; done
+				for MODULECFG in $(find $BACKUPCFG.d/*.cfg); do source "$BACKUPCFG".d/"${MODULECFG##*/}"; done
 			fi
 		else
 			echo "Configurationdirectory does not exists, can't load any configurationfile" | /usr/bin/logger -s -i -t databasebackup
@@ -52,11 +52,11 @@ function check_backup_env {
 		while read -r configline; do
 			echo "$configline" | grep -v '^$' | grep -v '^#' | /usr/bin/logger -s -i -t databasebackup
 		done <<< "$(cat $BACKUPCFG)"
-		for MODCFGLINE in $(find $BACKUPCFG.d/*.cfg | cut -d "." -f1); do
+		for MODCFGLINE in $(find $BACKUPCFG.d/*.cfg); do
 			echo "Debuginfo for $MODCFGLINE" | /usr/bin/logger -s -i -t databasebackup
 			while read -r modconfigline; do
 				echo "$modconfigline" | grep -v '^$' | grep -v '^#' | /usr/bin/logger -s -i -t databasebackup
-			done <<< "$(cat $BACKUPCFG.d/$MODCFGLINE.cfg)"
+			done <<< "$(cat "$MODCFGLINE")"
 		done
 		echo "################################################################################" | /usr/bin/logger -s -i -t databasebackup
 	fi
@@ -99,11 +99,11 @@ function load_dbbmodules {
 		if [ ! "$(ls -A $BACKUPCFG.d)" ] && [ ! "$(ls -A $INSTALLATION_PATH_PREFIX/lib/dbb-modules)" ]; then
 			debug "Configurationdirectory or directory for modules exist but it is empty"
 		else
-			for MODULE in $(find $BACKUPCFG.d/*.cfg | cut -d "/" -f4 | cut -d "." -f1); do
-				source $INSTALLATION_PATH_PREFIX/lib/dbb-modules/$MODULE
-				debug "Load module: $INSTALLATION_PATH_PREFIX/lib/dbb-modules/$MODULE"
+			for MODULE in $(find $BACKUPCFG.d/*.cfg); do
+				source $INSTALLATION_PATH_PREFIX/lib/dbb-modules/"$(echo "${MODULE##*/}" | cut -d "." -f1)"
+				debug "Load module: $INSTALLATION_PATH_PREFIX/lib/dbb-modules/$(echo "${MODULE##*/}" | cut -d "." -f1)"
 				# Check the dependenncies defined in the modulefunction -> should be defined in configfiles
-				check-$MODULE-deps
+				check-"$(echo "${MODULE##*/}" | cut -d "." -f1)"-deps
 			done
 		fi
 	else
@@ -159,23 +159,23 @@ function backup_file_handler {
 		debug "REMOVE_NUMBER: $REMOVE_NUMBER"
 		debug "FILE_PREFIX_NAME_TO_REMOVE: $BFH_FILE_PREFIX_NAME_TO_REMOVE-$BFH_FILE"
 		# Check if there is an backupfile from the current day
-		if [ -f "$BFH_BACKUPDIR_DIR"/"$BACKUP_DAY"-"$BFH_FILE" ]; then
+		if [ -f "$BFH_BACKUPDIR_DIR"/"$BACKUP_DAY"_"$BFH_FILE" ]; then
 			# If yes append miniutes and seconds to the date-profix of the filename
-			debug "File $BFH_BACKUPDIR_DIR/$BACKUP_DAY-$BFH_FILE already exists. Rename the new one."
-			DATE_TIME_SUFFIX=$(date +%H%M%S)
+			debug "File $BFH_BACKUPDIR_DIR/$BACKUP_DAY_$BFH_FILE already exists. Rename the new one."
+			DATE_TIME_SUFFIX=$(date +%H:%M:%S)
 			# ... and move it into the targetdir
-			mv "$BFH_TMP_DIR"/"$BFH_FILE" "$BFH_BACKUPDIR_DIR"/"$BACKUP_DAY"-"$DATE_TIME_SUFFIX"-"$BFH_FILE"
+			mv "$BFH_TMP_DIR"/"$BFH_FILE" "$BFH_BACKUPDIR_DIR"/"$BACKUP_DAY"_"$DATE_TIME_SUFFIX"_"$BFH_FILE"
 		else
 			# If there is no backupfile of the current day move it to the backupfolder
-			mv "$BFH_TMP_DIR"/"$BFH_FILE" "$BFH_BACKUPDIR_DIR"/"$BACKUP_DAY"-"$BFH_FILE"
+			mv "$BFH_TMP_DIR"/"$BFH_FILE" "$BFH_BACKUPDIR_DIR"/"$BACKUP_DAY"_"$BFH_FILE"
 		fi
 		# Check if there are files older then the days to keep set in the config
 		if [ -f "$BFH_BACKUPDIR_DIR"/"$BFH_FILE_PREFIX_NAME_TO_REMOVE"-"$BFH_FILE" ]; then
 			# if yes remove it
-			rm "$BFH_BACKUPDIR_DIR"/"$BFH_FILE_PREFIX_NAME_TO_REMOVE"-"$BFH_FILE"
+			rm "$BFH_BACKUPDIR_DIR"/"$BFH_FILE_PREFIX_NAME_TO_REMOVE"_"$BFH_FILE"
 			# Also remove the files with the extended prefix in the name
 			# If there is ab file with the extende prefix then there has to be a file with tne normal prefix
-			rm "$BFH_BACKUPDIR_DIR"/"$BFH_FILE_PREFIX_NAME_TO_REMOVE"?????-"$BFH_FILE"
+			rm "$BFH_BACKUPDIR_DIR"/"$BFH_FILE_PREFIX_NAME_TO_REMOVE"_????????_"$BFH_FILE"
 		else
 			# If no file exists do nothing but some debuginfo
 			debug "File $BFH_BACKUPDIR_DIR/$BFH_FILE_PREFIX_NAME_TO_REMOVE-$BFH_FILE does not exists, so can not remove it."
@@ -234,9 +234,9 @@ function main {
 		debug "Load dbb-modules"
 		load_dbbmodules
 		# Run modul-main-functions
-		for MODULEMAIN in $(find $BACKUPCFG.d/*.cfg | cut -d "/" -f4 | cut -d "." -f1); do
-			debug "run $MODULEMAIN-main - function of module $MODULEMAIN"
-			$MODULEMAIN-main
+		for MODULEMAIN in $(find $BACKUPCFG.d/*.cfg); do
+			debug "run $MODULEMAIN-main - function of module '$(echo "${MODULEMAIN##*/}" | cut -d "." -f1)'"
+			"$(echo "${MODULEMAIN##*/}" | cut -d "." -f1)"-main
 		done
 			# The final action: remove the dumps
 		rm -rf "$TMP_DIR"
