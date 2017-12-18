@@ -13,7 +13,7 @@ This script aims to backup many different databasetype eg. postgres, mariadb or 
 
 * Runs interactive and noninteractive
 * Make Pptgresbackups (localy and remote)
-* Make MariaDB-Backups (work in progress)
+* Make MariaDB-Backups (via network)
 * Make MongoDB-Backups (coming soon)
 * Optinal keep a filehistory of backups
 * Optinal logging to syslog
