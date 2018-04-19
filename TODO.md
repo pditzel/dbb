@@ -6,8 +6,8 @@ Ideas for the future
 
 ### MariaDB / MySQL
 
-- [ ] Backup MariaDB / MySQL on the local machine
-- [ ] Backup MariaDB / MySQL on remote machines
+- [x] Backup MariaDB / MySQL on the local machine
+- [x] Backup MariaDB / MySQL on remote machines
 
 ### MongoDB
 
