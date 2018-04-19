@@ -1,5 +1,43 @@
 #!/bin/bash
 
-function run_mongodb_backup {
-	echo ""
+############################
+# CAUTION WORK IN PROGRESS #
+# Will not work yet!       #
+############################
+
+function check_mongodb_deps {
+	if [ ! -e 
+	if [ -r ~/.mongorc.js ]; then
+		debug "function check_mongodb_deps: ~/.mongorc.js exists, doing backup."
+	else
+		debug "function check_mongodb_deps: ~/mongorc.js does not exists. Aborting mongodb-backup."
+		MONGODB_BACKUP=FALSE
+	fi
+}
+
+function mongodb_single_backup {
+if [ ${M_DB_LIST} ]; then
+	echo "backup ${M_DB}"
+	for M_DB in ${M_DB_LIST} ; do
+		mongodump --port=${M_PORT} --ssl --sslCAFile=${M_SSL_CERT_FILE} --host=${M_HOST} --username=${M_USER} --authenticationDatabase=${M_AUTH_DB} --password=${M_USER_PWD} --db=${M_DB} -o ${BACKUPDIR}/"${TIMESTAMP}"_"${M_HOST}"_"${M_DB}"
+	done
+fi
+}
+
+function mongodb_full_backup {
+	mongodump --port=${M_PORT} -ssl --sslCAFile=${M_SSL_CERT_FILE} --host=${M_HOST} --username=${M_USER} --authenticationDatabase=${M_AUTH_DB} --password=${M_USER_PWD} -o ${BACKUPDIR}/"${TIMESTAMP}"_"${M_HOST}"
+}
+
+function mongodb_backup_main {
+	check_mongodb_deps
+	if [ "$MONGODB_BACKUP" = "TRUE" ]; then
+		# check and do singledatabasebackup
+		if [ "$MONGODB_SINGLE_BACKUP" = "TRUE" ]; then
+			mongodb_single_backup
+		fi
+		# check an do completedatabasebackup
+		if [ "$MONGODB_FULL_BACKUP" = "TRUE" ]; then
+			mongodb_full_backup
+		fi
+	fi
 }

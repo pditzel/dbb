@@ -2,11 +2,10 @@
 
 # MariaBD/MySQL remote
 #
-# The Information what MySQL/MariaDB - databases should be backuped are defined in ~/.my.cnf
+# The Information what MySQL/MariaDB - databases should be backuped are defined in ~/.my.cnf-dbname
 #
-# note:for MARIADB in $(ls .my.cnf-* | cut -d "-" -f2); do mysqldump --defaults-file="~/.my.cnf-$MARIADB" --skip-dump-date $MARIADB > $TMP_DIR/$(cat ~/.my.cnf-$DATABASE | grep host | cut -d "=" -f2); done
-# note: for each MySQL- or MariaDB-Database create a seperate configfile .my.cnf-dbname ind the ~ of the backupuser:
-# note: replase the suffixe -dbname with the name of the database. The seperating "-" can also be a ".".
+# note: for each MySQL- or MariaDB-Database create a seperate configfile .my.cnf-dbname in the ~ of the backupuser:
+# note: replace the suffixe -dbname with the name of the database. The seperating "-" can also be a ".".
 #	[mysqldump]
 # host=HOSTNAME
 # user=DBUSERNAME
