@@ -21,7 +21,7 @@ function pg_local_all {
 	sudo -H -u postgres pg_dumpall > "$TMP_DIR"/local_dumpall.pgsql
 	debug "Diff alldumps from Postgres local"
 	# Check if there are differences between the actual dump and the last dump
-	backup_file_handler "$TMP_DIR $BACKUP_DIR" local_dumpall.pgsql
+	backup_file_handler "$TMP_DIR" "$BACKUP_DIR" local_dumpall.pgsql
 }
 
 function pg_local_single {
